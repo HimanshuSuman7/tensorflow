@@ -22,7 +22,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -38,6 +37,7 @@ from tensorflow.python.debug.wrappers import hooks
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -91,7 +91,8 @@ class GrpcDebugServerTest(test_util.TensorFlowTestCase):
     server.stop_server().wait()
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only(
+    "GrpcDebugWrapperSession and GrpcDebugHookare are for tf.Session only")
 class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
 
   @classmethod
@@ -115,7 +116,7 @@ class SessionDebugGrpcTest(session_debug_testlib.SessionDebugTestBase):
 
   def tearDown(self):
     if os.path.isdir(self._server_dump_dir):
-      shutil.rmtree(self._server_dump_dir)
+      file_io.delete_recursively(self._server_dump_dir)
     session_debug_testlib.SessionDebugTestBase.tearDown(self)
 
   def _debug_urls(self, run_number=None):
@@ -345,7 +346,7 @@ class SessionDebugConcurrentTest(
   def tearDown(self):
     ops.reset_default_graph()
     if os.path.isdir(self._server_dump_dir):
-      shutil.rmtree(self._server_dump_dir)
+      file_io.delete_recursively(self._server_dump_dir)
 
   def _get_concurrent_debug_urls(self):
     urls = []
@@ -354,7 +355,7 @@ class SessionDebugConcurrentTest(
     return urls
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("GrpcDebugWrapperSession is for tf.Session only")
 class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
   """Test server gating of debug ops."""
 
@@ -574,7 +575,7 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
         if i in (0, 2):
           # During runs 0 and 2, the server should have received the published
           # debug tensor delta:0:DebugIdentity. The breakpoint should have been
-          # unblocked by EventReply reponses from the server.
+          # unblocked by EventReply responses from the server.
           self.assertAllClose(
               [5.0],
               self._server_1.debug_tensor_values["delta_1:0:DebugIdentity"])
@@ -628,7 +629,7 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
         if i in (0, 2):
           # During runs 0 and 2, the server should have received the published
           # debug tensor delta:0:DebugIdentity. The breakpoint should have been
-          # unblocked by EventReply reponses from the server.
+          # unblocked by EventReply responses from the server.
           self.assertAllClose(
               [5.0],
               self._server_1.debug_tensor_values["delta_1:0:DebugIdentity"])
@@ -732,7 +733,7 @@ class SessionDebugGrpcGatingTest(test_util.TensorFlowTestCase):
       self.assertEqual("DebugNumericSummary", debug_watch.debug_op)
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_v1_only("GrpcDebugWrapperSession is for tf.Session only")
 class DelayedDebugServerTest(test_util.TensorFlowTestCase):
 
   def testDebuggedSessionRunWorksWithDelayedDebugServerStartup(self):

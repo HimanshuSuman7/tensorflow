@@ -352,7 +352,6 @@ class CheckpointPosition(object):
         if serialized_tensor.checkpoint_key not in saveable.name:
           saveable = None
           del saveables_cache[self.trackable]
-          break
       if saveable is None:
         # If there was no cached SaveableObject, we should check if the Python
         # object has the attribute.
@@ -611,6 +610,12 @@ class Trackable(object):
     # restore-on-create when executing eagerly, and so is unused when graph
     # building.
     self._self_name_based_restores = set()
+
+    # Dictionary of SaveableObjects factories. This dictionary is defined when
+    # the object is loaded from the SavedModel. When writing a custom class,
+    # prefer overriding "_gather_saveables_from_checkpoint" to using this
+    # attribute.
+    self._self_saveable_object_factories = {}
 
   @property
   def _object_identifier(self):
@@ -973,7 +978,7 @@ class Trackable(object):
        lambda name="global_name_for_this_object":
        SaveableObject(name=name, ...)}
     """
-    return {}
+    return self._self_saveable_object_factories
 
   def _list_extra_dependencies_for_serialization(self, serialization_cache):
     """Lists extra dependencies to serialize.
@@ -1022,3 +1027,21 @@ class Trackable(object):
     """
     del serialization_cache
     return dict()
+
+  def _map_resources(self):
+    """Makes new resource handle ops corresponding to existing resource tensors.
+
+    Internal sub-classes can override this to inform model saving how to add new
+    resource handle ops to the main GraphDef of a SavedModel (TF 1.x style
+    graph), which allows session based APIs (e.g, C++ loader API) to interact
+    with resources owned by this object.
+
+    Returns:
+      A tuple of (object_map, resource_map):
+        object_map: A dictionary mapping from objects that hold existing
+          resource tensors to replacement objects created to hold the new
+          resource tensors.
+        resource_map: A dictionary mapping from existing resource tensors to
+          newly created resource tensors.
+    """
+    return {}, {}

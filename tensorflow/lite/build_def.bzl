@@ -2,6 +2,7 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "clean_dep",
     "tf_binary_additional_srcs",
     "tf_cc_shared_object",
     "tf_cc_test",
@@ -12,29 +13,39 @@ def tflite_copts():
     copts = [
         "-DFARMHASH_NO_CXX_STRING",
     ] + select({
-        str(Label("//tensorflow:android_arm64")): [
-            "-O3",
-        ],
-        str(Label("//tensorflow:android_arm")): [
+        clean_dep("//tensorflow:android_arm"): [
             "-mfpu=neon",
-            "-O3",
         ],
-        str(Label("//tensorflow:ios_x86_64")): [
+        clean_dep("//tensorflow:ios_x86_64"): [
             "-msse4.1",
         ],
-        str(Label("//tensorflow:windows")): [
+        clean_dep("//tensorflow:windows"): [
             "/DTFL_COMPILE_LIBRARY",
             "/wd4018",  # -Wno-sign-compare
         ],
         "//conditions:default": [
             "-Wno-sign-compare",
         ],
+    }) + select({
+        clean_dep("//tensorflow:optimized"): ["-O3"],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:android"): [
+            "-ffunction-sections",  # Helps trim binary size.
+            "-fdata-sections",  # Helps trim binary size.
+        ],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [
+            "-fno-exceptions",  # Exceptions are unused in TFLite.
+        ],
     })
 
     return copts
 
-EXPORTED_SYMBOLS = "//tensorflow/lite/java/src/main/native:exported_symbols.lds"
-LINKER_SCRIPT = "//tensorflow/lite/java/src/main/native:version_script.lds"
+EXPORTED_SYMBOLS = clean_dep("//tensorflow/lite/java/src/main/native:exported_symbols.lds")
+LINKER_SCRIPT = clean_dep("//tensorflow/lite/java/src/main/native:version_script.lds")
 
 def tflite_linkopts_unstripped():
     """Defines linker flags to reduce size of TFLite binary.
@@ -49,7 +60,7 @@ def tflite_linkopts_unstripped():
     # In case you wonder why there's no --icf is because the gains were
     # negligible, and created potential compatibility problems.
     return select({
-        "//tensorflow:android": [
+        clean_dep("//tensorflow:android"): [
             "-Wl,--no-export-dynamic",  # Only inc syms referenced by dynamic obj.
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
@@ -70,7 +81,7 @@ def tflite_jni_linkopts_unstripped():
     # In case you wonder why there's no --icf is because the gains were
     # negligible, and created potential compatibility problems.
     return select({
-        "//tensorflow:android": [
+        clean_dep("//tensorflow:android"): [
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
         ],
@@ -80,12 +91,12 @@ def tflite_jni_linkopts_unstripped():
 def tflite_symbol_opts():
     """Defines linker flags whether to include symbols or not."""
     return select({
-        "//tensorflow:android": [
+        clean_dep("//tensorflow:android"): [
             "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.
         ],
         "//conditions:default": [],
     }) + select({
-        "//tensorflow:debug": [],
+        clean_dep("//tensorflow:debug"): [],
         "//conditions:default": [
             "-s",  # Omit symbol table, for all non debug builds
         ],
@@ -113,11 +124,11 @@ def tflite_jni_binary(
         srcs = []):
     """Builds a jni binary for TFLite."""
     linkopts = linkopts + select({
-        "//tensorflow:macos": [
+        clean_dep("//tensorflow:macos"): [
             "-Wl,-exported_symbols_list,$(location {})".format(exported_symbols),
             "-Wl,-install_name,@rpath/" + name,
         ],
-        "//tensorflow:windows": [],
+        clean_dep("//tensorflow:windows"): [],
         "//conditions:default": [
             "-Wl,--version-script,$(location {})".format(linkscript),
             "-Wl,-soname," + name,
@@ -140,8 +151,8 @@ def tflite_cc_shared_object(
         copts = tflite_copts(),
         linkopts = [],
         linkstatic = 1,
-        deps = [],
-        visibility = None):
+        per_os_targets = False,
+        **kwargs):
     """Builds a shared object for TFLite."""
     tf_cc_shared_object(
         name = name,
@@ -149,8 +160,8 @@ def tflite_cc_shared_object(
         linkstatic = linkstatic,
         linkopts = linkopts + tflite_jni_linkopts(),
         framework_so = [],
-        deps = deps,
-        visibility = visibility,
+        per_os_targets = per_os_targets,
+        **kwargs
     )
 
 def tf_to_tflite(name, src, options, out):
@@ -240,8 +251,10 @@ def generated_test_models():
         "ceil",
         "concat",
         "constant",
-        "control_dep",
         "conv",
+        "conv_relu",
+        "conv_relu1",
+        "conv_relu6",
         "conv2d_transpose",
         "conv_with_shared_weights",
         "conv_to_depthwiseconv_with_shared_weights",
@@ -291,6 +304,7 @@ def generated_test_models():
         "minimum",
         "mirror_pad",
         "mul",
+        "nearest_upsample",
         "neg",
         "not_equal",
         "one_hot",
@@ -311,12 +325,14 @@ def generated_test_models():
         "relu6",
         "reshape",
         "resize_bilinear",
+        "resize_nearest_neighbor",
         "resolve_constant_strided_slice",
         "reverse_sequence",
         "reverse_v2",
         "rfft2d",
         "round",
         "rsqrt",
+        "scatter_nd",
         "shape",
         "sigmoid",
         "sin",
@@ -335,11 +351,11 @@ def generated_test_models():
         "strided_slice_1d_exhaustive",
         "strided_slice_np_style",
         "sub",
+        "tanh",
         "tile",
         "topk",
         "transpose",
         "transpose_conv",
-        "uint8_hardswish",
         "unfused_gru",
         "unidirectional_sequence_lstm",
         "unidirectional_sequence_rnn",
@@ -369,8 +385,12 @@ def generated_test_models_failing(conversion_mode):
             "unidirectional_sequence_rnn",
         ]
     elif conversion_mode == "forward-compat":
-        return []
-    return []
+        return [
+            "merged_models",  # b/150647401
+        ]
+    return [
+        "merged_models",  # b/150647401
+    ]
 
 def generated_test_models_successful(conversion_mode):
     """Returns the list of successful test models.
@@ -608,23 +628,35 @@ def gen_zipped_test_file(name, file, toco, flags):
         srcs = [file],
     )
 
-def gen_selected_ops(name, model):
+def gen_selected_ops(name, model, namespace = "", **kwargs):
     """Generate the library that includes only used ops.
 
     Args:
       name: Name of the generated library.
-      model: TFLite model to interpret.
+      model: TFLite models to interpret, expect a list in case of multiple models.
+      namespace: Namespace in which to put RegisterSelectedOps.
+      **kwargs: Additional kwargs to pass to genrule.
     """
     out = name + "_registration.cc"
-    tool = "//tensorflow/lite/tools:generate_op_registrations"
+    tool = clean_dep("//tensorflow/lite/tools:generate_op_registrations")
     tflite_path = "//tensorflow/lite"
+
+    # isinstance is not supported in skylark.
+    if type(model) != type([]):
+        model = [model]
+
+    input_models_args = " --input_models=%s" % ",".join(
+        ["$(location %s)" % f for f in model],
+    )
+
     native.genrule(
         name = name,
-        srcs = [model],
+        srcs = model,
         outs = [out],
-        cmd = ("$(location %s) --input_model=$(location %s) --output_registration=$(location %s) --tflite_path=%s") %
-              (tool, model, out, tflite_path[2:]),
+        cmd = ("$(location %s) --namespace=%s --output_registration=$(location %s) --tflite_path=%s %s") %
+              (tool, namespace, out, tflite_path[2:], input_models_args),
         tools = [tool],
+        **kwargs
     )
 
 def flex_dep(target_op_sets):
@@ -633,7 +665,7 @@ def flex_dep(target_op_sets):
     else:
         return []
 
-def gen_model_coverage_test(src, model_name, data, failure_type, tags):
+def gen_model_coverage_test(src, model_name, data, failure_type, tags, size = "medium"):
     """Generates Python test targets for testing TFLite models.
 
     Args:
@@ -652,25 +684,96 @@ def gen_model_coverage_test(src, model_name, data, failure_type, tags):
         if failure_type[i] != "none":
             args.append("--failure_type=%s" % failure_type[i])
         i = i + 1
+
+        # Avoid coverage timeouts for large/enormous tests.
+        coverage_tags = ["nozapfhahn"] if size in ["large", "enormous"] else []
         native.py_test(
             name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
             srcs = [src],
             main = src,
-            size = "large",
+            size = size,
             args = [
                 "--model_name=%s" % model_name,
                 "--target_ops=%s" % target_op_sets,
             ] + args,
             data = data,
             srcs_version = "PY2AND3",
-            python_version = "PY2",
+            python_version = "PY3",
             tags = [
+                "no_gpu",  # Executing with TF GPU configurations is redundant.
                 "no_oss",
                 "no_windows",
-            ] + tags,
+            ] + tags + coverage_tags,
             deps = [
                 "//tensorflow/lite/testing/model_coverage:model_coverage_lib",
                 "//tensorflow/lite/python:lite",
                 "//tensorflow/python:client_testlib",
             ] + flex_dep(target_op_sets),
         )
+
+def if_tflite_experimental_runtime(if_eager, if_non_eager, if_none = []):
+    return select({
+        "//tensorflow/lite:tflite_experimental_runtime_eager": if_eager,
+        "//tensorflow/lite:tflite_experimental_runtime_non_eager": if_non_eager,
+        "//conditions:default": if_none,
+    })
+
+def tflite_experimental_runtime_linkopts(if_eager = [], if_non_eager = [], if_none = []):
+    return if_tflite_experimental_runtime(
+        if_eager = [
+            # "//tensorflow/lite/experimental/tf_runtime:eager_interpreter",
+            # "//tensorflow/lite/experimental/tf_runtime:eager_model",
+            # "//tensorflow/lite/experimental/tf_runtime:subgraph",
+        ] + if_eager,
+        if_non_eager = [
+            # "//tensorflow/lite/experimental/tf_runtime:interpreter",
+            # "//tensorflow/lite/experimental/tf_runtime:model",
+        ] + if_non_eager,
+        if_none = [] + if_none,
+    )
+
+def tflite_custom_cc_library(name, models = [], srcs = [], deps = [], visibility = ["//visibility:private"]):
+    """Generates a tflite cc library, stripping off unused operators.
+
+    This library includes the TfLite runtime as well as all operators needed for the given models.
+    Op resolver can be retrieved using tflite::CreateOpResolver method.
+
+    Args:
+        name: Str, name of the target.
+        models: List of models. This TFLite build will only include
+            operators used in these models. If the list is empty, all builtin
+            operators are included.
+        srcs: List of files implementing custom operators if any.
+        deps: Additional dependencies to build all the custom operators.
+        visibility: Visibility setting for the generated target. Default to private.
+    """
+    real_srcs = []
+    real_srcs.extend(srcs)
+    real_deps = []
+    real_deps.extend(deps)
+
+    if models:
+        gen_selected_ops(
+            name = "%s_registration" % name,
+            model = models[0],
+        )
+        real_srcs.append(":%s_registration" % name)
+        real_deps.append("//tensorflow/lite/java/src/main/native:selected_ops_jni")
+    else:
+        # Support all operators if `models` not specified.
+        real_deps.append("//tensorflow/lite/java/src/main/native")
+
+    native.cc_library(
+        name = name,
+        srcs = real_srcs,
+        copts = tflite_copts(),
+        linkopts = select({
+            "//tensorflow:windows": [],
+            "//conditions:default": ["-lm", "-ldl"],
+        }),
+        deps = depset([
+            "//tensorflow/lite:framework",
+            "//tensorflow/lite/kernels:builtin_ops",
+        ] + real_deps),
+        visibility = visibility,
+    )

@@ -123,6 +123,12 @@ class ShapeInference {
   // Infers the shape produced by the given triangular solve operation.
   static StatusOr<Shape> InferCholeskyShape(const Shape& a);
 
+  // Infers the shape produced by an all-gather with the given operand shape,
+  // concat dimension, and shard count.
+  static StatusOr<Shape> InferAllGatherShape(const Shape& operand_shape,
+                                             int64 all_gather_dimension,
+                                             int64 shard_count);
+
   // Infers the shape produced by a cross replica sum with the given operand
   // shapes.
   static StatusOr<Shape> InferAllReduceShape(
@@ -232,7 +238,8 @@ class ShapeInference {
   // its operand and the new dimension sizes specified.
   static StatusOr<Shape> InferReshapeShape(const Shape& operand,
                                            absl::Span<const int64> dimensions,
-                                           absl::Span<const int64> new_sizes);
+                                           absl::Span<const int64> new_sizes,
+                                           int64 inferred_dimension);
 
   // Infers the shape produced by a transpose operation from the element type of
   // its operand and its dimensions field.
@@ -296,7 +303,13 @@ class ShapeInference {
       const Shape& updates_shape, const ProgramShape& to_apply_shape,
       const ScatterDimensionNumbers& scatter_dim_numbers);
 
+  // Helper that validates the given input shape to GetDimensionSize.
   static StatusOr<Shape> InferGetDimensionSizeShape(const Shape& shape,
+                                                    int64 dimension);
+
+  // Helper that validates the given input shape to SetDimensionSize.
+  static StatusOr<Shape> InferSetDimensionSizeShape(const Shape& operand_shape,
+                                                    const Shape& val_shape,
                                                     int64 dimension);
 
   // Helper function for creating a Window proto from user-supplied data.
